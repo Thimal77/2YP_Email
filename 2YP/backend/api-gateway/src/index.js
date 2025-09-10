@@ -15,9 +15,13 @@ const verifyToken = require('./middlewares/verifyToken');
 
 
 
-//app.use(express.json());   // this one is removed cause It was consuming
-                             // the request body, preventing the proxy from forwarding 
-                             // it to the User Service.
+
+// Proxy for /api/auth to auth-service
+app.use('/api/auth', createProxyMiddleware({
+    target: 'http://localhost:5004', // Change if your auth-service runs on a different port
+    changeOrigin: true,
+    pathRewrite: { '^/api/auth': '' }
+}));
 
 
 app.use('/organizers',/*verifyToken,*/ createProxyMiddleware({

@@ -1,10 +1,6 @@
 DROP DATABASE IF EXISTS organizer_dashboard;
 
--- Create Database
-CREATE DATABASE organizer_dashboard;
-
--- Connect to the database
-\c organizer_dashboard;
+-- (Removed duplicate CREATE DATABASE and \c statements)
 
 -- ==============================
 -- TABLES
@@ -42,6 +38,18 @@ CREATE TABLE Organizer (
     email VARCHAR(150) UNIQUE NOT NULL,
     contact_no VARCHAR(20),
     password_hash VARCHAR(255) NOT NULL
+    
+);
+
+-- PendingOrganizer table for storing pending organizer requests
+CREATE TABLE PendingOrganizer (
+    pending_id SERIAL PRIMARY KEY,
+    fname VARCHAR(100) NOT NULL,
+    lname VARCHAR(100) NOT NULL,
+    email VARCHAR(150) UNIQUE NOT NULL,
+    contact_no VARCHAR(20),
+    password_hash VARCHAR(255) NOT NULL,
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 5. Events (linked to Organizer)
@@ -59,7 +67,6 @@ CREATE TABLE Events (
     CONSTRAINT fk_event_organizer FOREIGN KEY (organizer_ID) REFERENCES Organizer(organizer_ID) ON DELETE SET NULL
 );
 
--- 6. Admin
 CREATE TABLE Admin (
     admin_ID SERIAL PRIMARY KEY,
     user_name VARCHAR(100) UNIQUE NOT NULL,

@@ -3,6 +3,8 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const pool = require('../../../../db/db.js'); // PostgreSQL connection pool
+const { sendApprovalEmail } = require('../utils/email');
+const ADMIN_EMAIL = process.env.ADMIN_NOTIFY_EMAIL; // set this in your .env
 
 // ======================
 // REGISTER (Organizer)
@@ -27,16 +29,24 @@ const register = async (req, res) => {
         // Hash password
         const password_hash = await bcrypt.hash(password, 10);
 
-        // Insert new organizer
+
+        // Insert new organizer with status 'pending'
         const result = await pool.query(
-            `INSERT INTO Organizer (organizer_name, fname, lname, email, contact_no, password_hash)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING organizer_ID, organizer_name, fname, lname, email AS username, contact_no`,
-            [organizer_name, fname, lname, email, contact_no || null, password_hash]
+            `INSERT INTO Organizer (organizer_name, fname, lname, email, contact_no, password_hash, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING organizer_ID, organizer_name, fname, lname, email AS username, contact_no, status`,
+            [organizer_name, fname, lname, email, contact_no || null, password_hash, 'pending']
         );
 
+        // Send approval email to admin
+        const approvalLink = `${process.env.BASE_URL}/api/auth/approve/${result.rows[0].organizer_id}`;
+        await sendApprovalEmail(ADMIN_EMAIL, {
+            organizer_name,
+            email
+        }, approvalLink);
+
         res.status(201).json({ 
-            message: "Organizer registered successfully",
+            message: "Registration request sent for admin approval.",
             organizer: result.rows[0]
         });
 
@@ -57,6 +67,7 @@ const login = async (req, res) => {
             return res.status(400).json({ message: "Email (username) and Password are required" });
         }
 
+
         // Find organizer
         const userResult = await pool.query('SELECT * FROM Organizer WHERE email = $1', [email]);
         if (userResult.rows.length === 0) {
@@ -64,6 +75,11 @@ const login = async (req, res) => {
         }
 
         const user = userResult.rows[0];
+
+        // Check if approved
+        if (user.status !== 'approved') {
+            return res.status(403).json({ message: "Account not approved by admin yet." });
+        }
 
         // Compare password
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
@@ -86,4 +102,22 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = { register, login };
+// Admin approval endpoint
+const approveOrganizer = async (req, res) => {
+    try {
+        const { organizerId } = req.params;
+        const result = await pool.query(
+            'UPDATE Organizer SET status = $1 WHERE organizer_ID = $2 RETURNING *',
+            ['approved', organizerId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Organizer not found' });
+        }
+        res.json({ message: 'Organizer approved successfully', organizer: result.rows[0] });
+    } catch (err) {
+        console.error('Approve Organizer Error:', err.message);
+        res.status(500).json({ message: 'Internal server error', error: err.message });
+    }
+};
+
+module.exports = { register, login, approveOrganizer };

@@ -11,8 +11,8 @@ app.use(cors());
 app.use(express.json());
 
 // Routes
-const userRoutes = require('./routes/authRoutes');
-app.use('/auths', userRoutes);
+const authRoutes = require('./routes/authRoutes');
+app.use('/', authRoutes);
 
 
 // Error handling middleware - add this after routes
