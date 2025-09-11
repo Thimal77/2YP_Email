@@ -1,6 +1,6 @@
 // utils/approveOrganizer.js
 const pool = require('../../../../db/db.js');
-const { sendOrganizerApprovedEmail } = require('./email');
+const { sendOrganizerApprovedEmail } = require('./notificationEmail');
 
 // Admin approval endpoint
 const approveOrganizer = async (req, res) => {
