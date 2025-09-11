@@ -1,4 +1,4 @@
-// controllers/approveController.js
+// utils/approveOrganizer.js
 const pool = require('../../../../db/db.js');
 
 // Admin approval endpoint

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { register, login } = require('../controllers/authController');
-const { approveOrganizer } = require('../controllers/approveController');
+const { approveOrganizer } = require('../utils/approveOrganizer');
 
 // Register a new organizer
 router.post('/register', register);
