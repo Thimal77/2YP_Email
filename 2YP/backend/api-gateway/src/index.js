@@ -37,7 +37,7 @@ app.use('/events',verifyToken, createProxyMiddleware({
     pathRewrite: (path, req) => req.originalUrl.replace(/^\/events/, '/events')
 }));
 
-app.use('/buildings', createProxyMiddleware({
+app.use('/buildings', verifyToken, createProxyMiddleware({
     target: 'http://localhost:5003',
     changeOrigin: true,
     pathRewrite: (path, req) => req.originalUrl.replace(/^\/buildings/, '/buildings')
