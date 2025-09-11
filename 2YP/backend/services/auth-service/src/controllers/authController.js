@@ -3,7 +3,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const pool = require('../../../../db/db.js'); // PostgreSQL connection pool
-const { sendApprovalEmail } = require('../utils/email');
+const { sendApprovalEmail } = require('../utils/approvalEmail');
 const ADMIN_EMAIL = process.env.ADMIN_NOTIFY_EMAIL; // set this in your .env
 
 // ======================
