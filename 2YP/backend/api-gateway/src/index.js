@@ -43,11 +43,18 @@ app.use('/buildings', createProxyMiddleware({
     pathRewrite: (path, req) => req.originalUrl.replace(/^\/booths/, '/booths')
 }));
 
-
+/*
 app.use('/auths', createProxyMiddleware({
     target: 'http://localhost:5004',
     changeOrigin: true,
     pathRewrite: (path, req) => req.originalUrl.replace(/^\/auths/, '/auths')
+}));
+*/
+
+app.use('/auths', createProxyMiddleware({
+    target: 'http://localhost:5004',
+    changeOrigin: true,
+    pathRewrite: { '^/auths': '' } // remove /auths before sending
 }));
 
 
