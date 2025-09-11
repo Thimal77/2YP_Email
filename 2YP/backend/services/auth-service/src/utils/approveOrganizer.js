@@ -1,5 +1,6 @@
 // utils/approveOrganizer.js
 const pool = require('../../../../db/db.js');
+const { sendOrganizerApprovedEmail } = require('./email');
 
 // Admin approval endpoint
 const approveOrganizer = async (req, res) => {
@@ -12,7 +13,9 @@ const approveOrganizer = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Organizer not found' });
         }
-        res.json({ message: 'Organizer approved successfully', organizer: result.rows[0] });
+    // Send email to organizer
+    await sendOrganizerApprovedEmail(result.rows[0]);
+    res.json({ message: 'Organizer approved successfully', organizer: result.rows[0] });
     } catch (err) {
         console.error('Approve Organizer Error:', err.message);
         res.status(500).json({ message: 'Internal server error', error: err.message });
