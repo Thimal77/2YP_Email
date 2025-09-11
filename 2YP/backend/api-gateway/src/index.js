@@ -25,13 +25,13 @@ app.use('/api/auth', createProxyMiddleware({
 }));
 */
 
-app.use('/organizers',/*verifyToken,*/ createProxyMiddleware({
+app.use('/organizers',verifyToken, createProxyMiddleware({
     target: 'http://localhost:5001',
     changeOrigin: true,
     pathRewrite: (path, req) => req.originalUrl.replace(/^\/users/, '/users')
 }));
 
-app.use('/events', createProxyMiddleware({
+app.use('/events',verifyToken, createProxyMiddleware({
     target: 'http://localhost:5002',
     changeOrigin: true,
     pathRewrite: (path, req) => req.originalUrl.replace(/^\/events/, '/events')
@@ -40,7 +40,7 @@ app.use('/events', createProxyMiddleware({
 app.use('/buildings', createProxyMiddleware({
     target: 'http://localhost:5003',
     changeOrigin: true,
-    pathRewrite: (path, req) => req.originalUrl.replace(/^\/booths/, '/booths')
+    pathRewrite: (path, req) => req.originalUrl.replace(/^\/buildings/, '/buildings')
 }));
 
 /*
