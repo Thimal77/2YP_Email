@@ -1,13 +1,23 @@
 // utils/email.js
 const nodemailer = require('nodemailer');
+require('dotenv').config();
+
+// 👇 Add this before transporter
+console.log("Email:", process.env.ADMIN_EMAIL);
+console.log("Pass:", process.env.ADMIN_PASSWORD ? "****" : "MISSING");
+
 
 const transporter = nodemailer.createTransport({
-    service: 'gmail', // or your email provider
-    auth: {
-        user: process.env.ADMIN_EMAIL, // set in .env
-        pass: process.env.ADMIN_EMAIL_PASSWORD // set in .env
-    }
+  service: 'gmail',
+  auth: {
+    user: process.env.ADMIN_EMAIL,
+    pass: process.env.ADMIN_PASSWORD
+  },
+  tls: {
+    rejectUnauthorized: false   // 👈 accept self-signed cert
+  }
 });
+
 
 async function sendApprovalEmail(adminEmail, organizer, approvalLink) {
     const mailOptions = {

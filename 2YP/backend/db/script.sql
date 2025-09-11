@@ -1,6 +1,10 @@
 DROP DATABASE IF EXISTS organizer_dashboard;
 
--- (Removed duplicate CREATE DATABASE and \c statements)
+-- Create Database
+CREATE DATABASE organizer_dashboard;
+
+-- Connect to the database
+\c organizer_dashboard;
 
 -- ==============================
 -- TABLES
@@ -18,7 +22,10 @@ CREATE TABLE Building (
     zone_ID INT NOT NULL,
     building_name VARCHAR(150) NOT NULL,
     description TEXT,
-    CONSTRAINT fk_building_zone FOREIGN KEY (zone_ID) REFERENCES Zone(zone_ID) ON DELETE CASCADE
+    exhibits TEXT[],  -- list of exhibits
+    CONSTRAINT fk_building_zone 
+        FOREIGN KEY (zone_ID) REFERENCES Zone(zone_ID) 
+        ON DELETE CASCADE
 );
 
 -- 3. Exhibits
@@ -37,19 +44,8 @@ CREATE TABLE Organizer (
     lname VARCHAR(100) NOT NULL,
     email VARCHAR(150) UNIQUE NOT NULL,
     contact_no VARCHAR(20),
-    password_hash VARCHAR(255) NOT NULL
-    
-);
-
--- PendingOrganizer table for storing pending organizer requests
-CREATE TABLE PendingOrganizer (
-    pending_id SERIAL PRIMARY KEY,
-    fname VARCHAR(100) NOT NULL,
-    lname VARCHAR(100) NOT NULL,
-    email VARCHAR(150) UNIQUE NOT NULL,
-    contact_no VARCHAR(20),
     password_hash VARCHAR(255) NOT NULL,
-    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    status VARCHAR(20) DEFAULT 'pending'
 );
 
 -- 5. Events (linked to Organizer)

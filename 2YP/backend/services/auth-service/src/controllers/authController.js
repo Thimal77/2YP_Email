@@ -39,7 +39,7 @@ const register = async (req, res) => {
         );
 
         // Send approval email to admin
-        const approvalLink = `${process.env.BASE_URL}/api/auth/approve/${result.rows[0].organizer_id}`;
+        const approvalLink = `${process.env.BASE_URL}/auths/approve/${result.rows[0].organizer_id}`;
         await sendApprovalEmail(ADMIN_EMAIL, {
             organizer_name,
             email

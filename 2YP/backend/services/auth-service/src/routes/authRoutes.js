@@ -11,4 +11,5 @@ router.post('/login', login);
 module.exports = router;
 
 // Admin approval endpoint
-router.get('/approve/:organizerId', approveOrganizer);
+router.get('/approve/:organizerId', approveOrganizer); // email link
+router.put('/approve/:organizerId', approveOrganizer); // admin dashboard / Postman

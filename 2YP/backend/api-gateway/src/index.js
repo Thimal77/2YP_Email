@@ -17,12 +17,13 @@ const verifyToken = require('./middlewares/verifyToken');
 
 
 // Proxy for /api/auth to auth-service
+/*
 app.use('/api/auth', createProxyMiddleware({
     target: 'http://localhost:5004', // Change if your auth-service runs on a different port
     changeOrigin: true,
     pathRewrite: { '^/api/auth': '' }
 }));
-
+*/
 
 app.use('/organizers',/*verifyToken,*/ createProxyMiddleware({
     target: 'http://localhost:5001',
