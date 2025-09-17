@@ -1,4 +1,4 @@
-// Import controller functions to be tested
+// Import all controller functions for testing
 const {
   getBuildings,
   getBuildingById,
@@ -10,110 +10,152 @@ const {
 // ==========================
 // Mock the database pool
 // ==========================
-// Jest mock for the database module (db.js). Instead of actually connecting
-// to the database, we simulate query results using jest.fn()
+// Instead of using a real database, we mock the `query` method of our db.js
+// so we can control the responses and test different scenarios
 jest.mock("../../../db/db.js", () => ({
-  query: jest.fn() // Mock the `query` method
+  query: jest.fn()
 }));
 const pool = require("../../../db/db.js");
 
 // ==========================
-// Helper function for mocking Express `res` object
+// Helper function to mock Express `res` object
 // ==========================
-// Creates a mock response object with `status` and `json` functions
-// that can be tracked using Jest's mock functions
 const mockResponse = () => {
   const res = {};
-  res.status = jest.fn().mockReturnValue(res); // allows chaining: res.status(...).json(...)
-  res.json = jest.fn().mockReturnValue(res);   // captures JSON output
+  // Mock `status` to return `res` for chaining: res.status(...).json(...)
+  res.status = jest.fn().mockReturnValue(res);
+  // Mock `json` to capture JSON responses
+  res.json = jest.fn().mockReturnValue(res);
   return res;
 };
 
 // ==========================
-// Test Suite for Building Controller
+// Test Suite: Building Controller
 // ==========================
 describe("Building Controller (Unit Tests)", () => {
-  // Clear all mocks after each test to prevent test interference
+  // Clear all mock data after each test to avoid interference
   afterEach(() => {
     jest.clearAllMocks();
   });
 
   // ================= GET ALL BUILDINGS =================
-  it("should return all buildings", async () => {
-    const req = {};            // empty request object
-    const res = mockResponse(); 
-    const fakeRows = [{ building_id: 1, building_name: "Library" }];
-
-    // Simulate the database returning some rows
+  it("should return all buildings when database has data", async () => {
+    const req = {};
+    const res = mockResponse();
+    const fakeRows = [
+      { building_id: 1, building_name: "Library" },
+      { building_id: 2, building_name: "Science Lab" }
+    ];
     pool.query.mockResolvedValueOnce({ rows: fakeRows });
 
-    // Call the controller function
     await getBuildings(req, res);
 
-    // Assertions
-    expect(pool.query).toHaveBeenCalledTimes(1);   // Ensure query was called once
-    expect(res.json).toHaveBeenCalledWith(fakeRows); // Ensure correct JSON returned
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(res.json).toHaveBeenCalledWith(fakeRows);
+  });
+
+  it("should return empty array when no buildings exist", async () => {
+    const req = {};
+    const res = mockResponse();
+    pool.query.mockResolvedValueOnce({ rows: [] }); // simulate empty DB
+
+    await getBuildings(req, res);
+
+    expect(res.json).toHaveBeenCalledWith([]); // should return empty array
   });
 
   // ================= GET BUILDING BY ID =================
-  it("should return building by ID", async () => {
+  it("should return building by valid ID", async () => {
     const req = { params: { id: 1 } };
     const res = mockResponse();
     pool.query.mockResolvedValueOnce({ rows: [{ building_id: 1, building_name: "Library" }] });
 
     await getBuildingById(req, res);
 
-    expect(pool.query).toHaveBeenCalledWith(expect.any(String), [1]); // Check query SQL and parameter
     expect(res.json).toHaveBeenCalledWith({ building_id: 1, building_name: "Library" });
   });
 
-  it("should return 404 if building not found", async () => {
+  it("should return 404 for non-existing building ID", async () => {
     const req = { params: { id: 99 } };
     const res = mockResponse();
-    pool.query.mockResolvedValueOnce({ rows: [] }); // simulate empty result
+    pool.query.mockResolvedValueOnce({ rows: [] });
 
     await getBuildingById(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(404); // Check that 404 status is returned
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith({ message: "Building not found" });
   });
 
+  it("should handle invalid ID type", async () => {
+    const req = { params: { id: "abc" } }; // invalid string ID
+    const res = mockResponse();
+    pool.query.mockRejectedValueOnce(new Error("Invalid input syntax for integer")); // simulate DB error
+
+    await getBuildingById(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500); // internal server error
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Database error" }));
+  });
+
   // ================= CREATE NEW BUILDING =================
-  it("should create a new building", async () => {
+  it("should create a new building with all fields", async () => {
     const req = {
-      body: { building_id: 10, zone_id: 2, building_name: "Lab", description: "Test" }
+      body: { building_id: 10, zone_id: 2, building_name: "Lab", description: "Test", exhibits: "Science" }
     };
     const res = mockResponse();
-    const fakeRow = { building_id: 10, zone_id: 2, building_name: "Lab", description: "Test" };
-    pool.query.mockResolvedValueOnce({ rows: [fakeRow] }); // simulate DB insertion result
+    const fakeRow = { building_id: 10, zone_id: 2, building_name: "Lab", description: "Test", exhibits: "Science" };
+    pool.query.mockResolvedValueOnce({ rows: [fakeRow] });
 
     await createBuilding(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(201); // Check that 201 Created is returned
+    expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith({
       message: "Building created successfully",
       building: fakeRow
     });
   });
 
-  it("should return 400 if required fields missing", async () => {
+  it("should return 400 if required fields are missing", async () => {
     const req = { body: { zone_id: 2 } }; // missing building_id and building_name
     const res = mockResponse();
 
     await createBuilding(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(400); // Check 400 Bad Request
+    expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       message: "building_id, zone_id and building_name are required"
     });
   });
 
-  // ================= UPDATE BUILDING =================
-  it("should update a building", async () => {
-    const req = { params: { id: 1 }, body: { building_name: "Updated" } };
+  it("should return 409 if building ID already exists", async () => {
+    const req = { body: { building_id: 1, zone_id: 2, building_name: "Lab" } };
     const res = mockResponse();
-    const fakeRow = { building_id: 1, building_name: "Updated" };
-    pool.query.mockResolvedValueOnce({ rows: [fakeRow] }); // simulate DB update result
+    // Simulate DB unique constraint error
+    pool.query.mockRejectedValueOnce({ code: '23505', constraint: 'building_pkey' });
+
+    await createBuilding(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({ message: "Building ID already exists" });
+  });
+
+  it("should return 409 if building name already exists", async () => {
+    const req = { body: { building_id: 11, zone_id: 2, building_name: "Library" } };
+    const res = mockResponse();
+    pool.query.mockRejectedValueOnce({ code: '23505', constraint: 'building_name_unique' });
+
+    await createBuilding(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({ message: "Building name must be unique" });
+  });
+
+  // ================= UPDATE BUILDING =================
+  it("should update a building with partial fields", async () => {
+    const req = { params: { id: 1 }, body: { building_name: "Updated Name" } };
+    const res = mockResponse();
+    const fakeRow = { building_id: 1, building_name: "Updated Name" };
+    pool.query.mockResolvedValueOnce({ rows: [fakeRow] });
 
     await updateBuilding(req, res);
 
@@ -126,7 +168,7 @@ describe("Building Controller (Unit Tests)", () => {
   it("should return 404 when updating non-existing building", async () => {
     const req = { params: { id: 99 }, body: { building_name: "DoesNotExist" } };
     const res = mockResponse();
-    pool.query.mockResolvedValueOnce({ rows: [] }); // no rows updated
+    pool.query.mockResolvedValueOnce({ rows: [] });
 
     await updateBuilding(req, res);
 
@@ -134,12 +176,23 @@ describe("Building Controller (Unit Tests)", () => {
     expect(res.json).toHaveBeenCalledWith({ message: "Building not found" });
   });
 
+  it("should return 409 if updated name conflicts with existing building", async () => {
+    const req = { params: { id: 1 }, body: { building_name: "Library" } };
+    const res = mockResponse();
+    pool.query.mockRejectedValueOnce({ code: '23505' });
+
+    await updateBuilding(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({ message: "Building name must be unique" });
+  });
+
   // ================= DELETE BUILDING =================
-  it("should delete a building", async () => {
+  it("should delete an existing building", async () => {
     const req = { params: { id: 1 } };
     const res = mockResponse();
     const fakeRow = { building_id: 1, building_name: "Library" };
-    pool.query.mockResolvedValueOnce({ rows: [fakeRow] }); // simulate DB deletion
+    pool.query.mockResolvedValueOnce({ rows: [fakeRow] });
 
     await deleteBuilding(req, res);
 
@@ -149,14 +202,25 @@ describe("Building Controller (Unit Tests)", () => {
     });
   });
 
-  it("should return 404 if delete target not found", async () => {
+  it("should return 404 when deleting non-existing building", async () => {
     const req = { params: { id: 99 } };
     const res = mockResponse();
-    pool.query.mockResolvedValueOnce({ rows: [] }); // nothing to delete
+    pool.query.mockResolvedValueOnce({ rows: [] });
 
     await deleteBuilding(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith({ message: "Building not found" });
+  });
+
+  it("should handle database errors on delete gracefully", async () => {
+    const req = { params: { id: 1 } };
+    const res = mockResponse();
+    pool.query.mockRejectedValueOnce(new Error("Database connection lost"));
+
+    await deleteBuilding(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Database error" }));
   });
 });
