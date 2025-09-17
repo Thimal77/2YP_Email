@@ -16,17 +16,16 @@ CREATE TABLE Zone (
     zone_name VARCHAR(100) NOT NULL
 );
 
--- 2. Building
 CREATE TABLE Building (
-    building_ID SERIAL PRIMARY KEY,
+    building_ID INT PRIMARY KEY,
     zone_ID INT NOT NULL,
-    building_name VARCHAR(150) NOT NULL,
+    building_name VARCHAR(150) NOT NULL UNIQUE,  -- enforce unique names
     description TEXT,
-    exhibits TEXT[],  -- list of exhibits
-    CONSTRAINT fk_building_zone 
-        FOREIGN KEY (zone_ID) REFERENCES Zone(zone_ID) 
-        ON DELETE CASCADE
+    exhibits TEXT[],  -- array to hold multiple exhibit names/IDs
+    CONSTRAINT fk_building_zone FOREIGN KEY (zone_ID) REFERENCES Zone(zone_ID) ON DELETE CASCADE
 );
+
+
 
 -- 3. Exhibits
 CREATE TABLE Exhibits (
@@ -57,12 +56,12 @@ CREATE TABLE Events (
     location VARCHAR(200),
     description TEXT,
     media_urls TEXT,
-    event_category VARCHAR(100),
-    CONSTRAINT chk_event_time CHECK (start_time < end_time),
-    organizer_ID INT,
-    CONSTRAINT fk_event_organizer FOREIGN KEY (organizer_ID) REFERENCES Organizer(organizer_ID) ON DELETE SET NULL
+    event_categories TEXT[],   -- now supports multiple categories
+    CONSTRAINT chk_event_time CHECK (start_time < end_time)
 );
 
+
+-- 6. Admin
 CREATE TABLE Admin (
     admin_ID SERIAL PRIMARY KEY,
     user_name VARCHAR(100) UNIQUE NOT NULL,
@@ -101,73 +100,3 @@ CREATE TABLE Event_Tag (
     CONSTRAINT fk_et_event FOREIGN KEY (event_ID) REFERENCES Events(event_ID) ON DELETE CASCADE,
     CONSTRAINT fk_et_tag FOREIGN KEY (tag_ID) REFERENCES Tag(tag_ID) ON DELETE CASCADE
 );
-
-
-
-/*
--- Create Database
-CREATE DATABASE organizer_dashboard;
-
--- Connect to the database
-\c organizer_dashboard;
-
--- ==============================
--- TABLES
--- ==============================
-
--- 1. Zone
-CREATE TABLE Zone (
-    zone_ID SERIAL PRIMARY KEY,
-    zone_name VARCHAR(100) NOT NULL
-);
-
--- 2. Building
-CREATE TABLE Building (
-    building_ID SERIAL PRIMARY KEY,
-    zone_ID INT NOT NULL,
-    building_name VARCHAR(150) NOT NULL,
-    description TEXT,
-    CONSTRAINT fk_building_zone FOREIGN KEY (zone_ID) REFERENCES Zone(zone_ID) ON DELETE CASCADE
-);
-
--- 3. Exhibits
-CREATE TABLE Exhibits (
-    exhibit_ID SERIAL PRIMARY KEY,
-    exhibit_name VARCHAR(150) NOT NULL,
-    building_ID INT NOT NULL,
-    CONSTRAINT fk_exhibit_building FOREIGN KEY (building_ID) REFERENCES Building(building_ID) ON DELETE CASCADE
-);
-
--- 4. Organizer
-CREATE TABLE Organizer (
-    organizer_ID SERIAL PRIMARY KEY,
-    organizer_name VARCHAR(100),
-    Fname VARCHAR(100) NOT NULL,
-    Lname VARCHAR(100) NOT NULL,
-    email VARCHAR(150) UNIQUE NOT NULL,
-    contact_no VARCHAR(20)
-);
-
--- 5. Events
-CREATE TABLE Events (
-    event_ID SERIAL PRIMARY KEY,
-    event_name VARCHAR(200) NOT NULL,
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP NOT NULL,
-    location VARCHAR(200),
-    description TEXT,
-    speakers TEXT,
-    media_urls TEXT,
-    event_category VARCHAR(100),
-    tags TEXT,
-    CONSTRAINT chk_event_time CHECK (start_time < end_time)
-);
-
--- 6. Admin
-CREATE TABLE Admin (
-    admin_ID SERIAL PRIMARY KEY,
-    user_name VARCHAR(100) UNIQUE NOT NULL,
-    email VARCHAR(150) UNIQUE NOT NULL
-);
-
-*/
