@@ -8,7 +8,7 @@ const pool = require('../../../../db/db.js');
 const getBuildings = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT building_ID, zone_ID, building_name, description, exhibits
+      SELECT building_ID, zone_ID, building_name, description, exhibits, exhibit_tags
       FROM Building
       ORDER BY building_ID
     `);
@@ -26,7 +26,7 @@ const getBuildingById = async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
-      `SELECT building_ID, zone_ID, building_name, description, exhibits
+      `SELECT building_ID, zone_ID, building_name, description, exhibits, exhibit_tags
        FROM Building
        WHERE building_ID = $1`,
       [id]
@@ -47,7 +47,7 @@ const getBuildingById = async (req, res) => {
 // CREATE A NEW BUILDING
 // ==============================
 const createBuilding = async (req, res) => {
-  const { building_id, zone_id, building_name, description, exhibits } = req.body;
+  const { building_id, zone_id, building_name, description, exhibits, exhibit_tags } = req.body;
 
   if (building_id === undefined || building_id === null || !zone_id || !building_name) {
     return res.status(400).json({ message: 'building_id, zone_id and building_name are required' });
@@ -64,14 +64,38 @@ const createBuilding = async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
-      `INSERT INTO Building (building_ID, zone_ID, building_name, description, exhibits)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING building_ID, zone_ID, building_name, description, exhibits`,
-      [building_id, zone_id, building_name, description || null, exhibits || null]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `INSERT INTO Building (building_ID, zone_ID, building_name, description, exhibits, exhibit_tags)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+         RETURNING building_ID, zone_ID, building_name, description, exhibits, exhibit_tags`,
+        [building_id, zone_id, building_name, description || null, exhibits || null, exhibit_tags ? JSON.stringify(exhibit_tags) : null]
+      );
 
-    res.status(201).json({ message: 'Building created successfully', building: result.rows[0] });
+      // maintain Exhibit_Tag_Map if exhibit_tags provided
+      if (exhibit_tags && typeof exhibit_tags === 'object') {
+        const entries = Object.entries(exhibit_tags);
+        for (const [exhibitName, tag] of entries) {
+          if (!exhibitName || !tag) continue;
+          await client.query(
+            `INSERT INTO Exhibit_Tag_Map (building_ID, exhibit_name, tag)
+             VALUES ($1, $2, $3)`,
+            [building_id, exhibitName, String(tag)]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      res.status(201).json({ message: 'Building created successfully', building: result.rows[0] });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
   } catch (err) {
     if (err.code === '23505') {  // unique violation
       if (err.constraint === 'building_pkey') {
@@ -90,25 +114,51 @@ const createBuilding = async (req, res) => {
 // ==============================
 const updateBuilding = async (req, res) => {
   const { id } = req.params;
-  const { zone_id, building_name, description, exhibits } = req.body;
+  const { zone_id, building_name, description, exhibits, exhibit_tags } = req.body;
 
   try {
-    const result = await pool.query(
-      `UPDATE Building
-       SET zone_ID = COALESCE($1, zone_ID),
-           building_name = COALESCE($2, building_name),
-           description = COALESCE($3, description),
-           exhibits = COALESCE($4, exhibits)
-       WHERE building_ID = $5
-       RETURNING building_ID, zone_ID, building_name, description, exhibits`,
-      [zone_id || null, building_name || null, description || null, exhibits || null, id]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `UPDATE Building
+         SET zone_ID = COALESCE($1, zone_ID),
+             building_name = COALESCE($2, building_name),
+             description = COALESCE($3, description),
+             exhibits = COALESCE($4, exhibits),
+             exhibit_tags = COALESCE($5::jsonb, exhibit_tags)
+         WHERE building_ID = $6
+         RETURNING building_ID, zone_ID, building_name, description, exhibits, exhibit_tags`,
+        [zone_id || null, building_name || null, description || null, exhibits || null, exhibit_tags ? JSON.stringify(exhibit_tags) : null, id]
+      );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Building not found' });
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Building not found' });
+      }
+
+      // refresh Exhibit_Tag_Map if exhibit_tags provided
+      if (exhibit_tags && typeof exhibit_tags === 'object') {
+        await client.query(`DELETE FROM Exhibit_Tag_Map WHERE building_ID = $1`, [id]);
+        const entries = Object.entries(exhibit_tags);
+        for (const [exhibitName, tag] of entries) {
+          if (!exhibitName || !tag) continue;
+          await client.query(
+            `INSERT INTO Exhibit_Tag_Map (building_ID, exhibit_name, tag)
+             VALUES ($1, $2, $3)`,
+            [id, exhibitName, String(tag)]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Building updated successfully', building: result.rows[0] });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    res.json({ message: 'Building updated successfully', building: result.rows[0] });
   } catch (err) {
     if (err.code === '23505') {  // unique violation
       return res.status(409).json({ message: 'Building name must be unique' });
@@ -142,6 +192,12 @@ const deleteBuilding = async (req, res) => {
     res.status(500).json({ message: 'Database error', error: err.message });
   }
 };
+// Tags list
+router.get('/tags', (req, res) => {
+	res.json({
+		tags: ['AI', 'Robotics', 'Mechanics', 'Civil', 'Electronics', 'Computer Science', 'Chemical', 'Manufacturing']
+	});
+});
 
 module.exports = {
   getBuildings,
