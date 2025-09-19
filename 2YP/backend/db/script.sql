@@ -22,6 +22,7 @@ CREATE TABLE Building (
     building_name VARCHAR(150) NOT NULL UNIQUE,  -- enforce unique names
     description TEXT,
     exhibits TEXT[],  -- array to hold multiple exhibit names/IDs
+    exhibit_tags JSONB, -- dictionary mapping exhibit name -> tag
     CONSTRAINT fk_building_zone FOREIGN KEY (zone_ID) REFERENCES Zone(zone_ID) ON DELETE CASCADE
 );
 
@@ -33,6 +34,15 @@ CREATE TABLE Exhibits (
     exhibit_name VARCHAR(150) NOT NULL,
     building_ID INT NOT NULL,
     CONSTRAINT fk_exhibit_building FOREIGN KEY (building_ID) REFERENCES Building(building_ID) ON DELETE CASCADE
+);
+
+-- Mapping table for exhibit -> tag pairs (for reporting and queries)
+CREATE TABLE Exhibit_Tag_Map (
+    id SERIAL PRIMARY KEY,
+    building_ID INT NOT NULL,
+    exhibit_name VARCHAR(150) NOT NULL,
+    tag VARCHAR(100) NOT NULL,
+    CONSTRAINT fk_etm_building FOREIGN KEY (building_ID) REFERENCES Building(building_ID) ON DELETE CASCADE
 );
 
 -- 4. Organizer
