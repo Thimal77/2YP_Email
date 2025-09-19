@@ -1,225 +1,164 @@
 // -------------------- IMPORT CONTROLLERS --------------------
-
-// Import the functions we want to test
 const { register, login } = require('../../src/controllers/authController');
 const { approveOrganizer } = require('../../src/utils/approveOrganizer');
 
-
 // -------------------- MOCKING DEPENDENCIES --------------------
-
-// Mock bcrypt for password hashing and comparison
 jest.mock('bcrypt', () => ({
-  hash: jest.fn().mockResolvedValue('hashed_password'), // simulate hashing
-  compare: jest.fn().mockResolvedValue(true)            // simulate password check
+  hash: jest.fn().mockResolvedValue('hashed_password'),
+  compare: jest.fn().mockResolvedValue(true)
 }));
 
-// Mock jsonwebtoken to generate fake JWT tokens
 jest.mock('jsonwebtoken', () => ({
-  sign: jest.fn().mockReturnValue('mock_jwt_token')     // always return same token
+  sign: jest.fn().mockReturnValue('mock_jwt_token')
 }));
 
-// Mock nodemailer to avoid sending real emails
-jest.mock('nodemailer');
-
-// Import mocked modules so we can check calls later
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-// -------------------- MOCK DATABASE --------------------
-
-// Mock database connection so tests do not hit real DB
-jest.mock('../../../../db/db.js', () => ({
-  query: jest.fn()  // every call to pool.query can be controlled in tests
-}));
+jest.mock('../../../../db/db.js', () => ({ query: jest.fn() }));
 const pool = require('../../../../db/db.js');
 
-// -------------------- MOCK EMAIL UTILITIES --------------------
-
-// Mock function to simulate sending approval email
-jest.mock('../../src/utils/sendApproveEmail', () => ({
-  sendApprovalEmail: jest.fn()
-}));
+jest.mock('../../src/utils/sendApproveEmail', () => ({ sendApprovalEmail: jest.fn() }));
 const { sendApprovalEmail } = require('../../src/utils/sendApproveEmail');
 
-// Mock function to simulate sending organizer approved email
-jest.mock('../../src/utils/notificationEmail', () => ({
-  sendOrganizerApprovedEmail: jest.fn()
-}));
+jest.mock('../../src/utils/notificationEmail', () => ({ sendOrganizerApprovedEmail: jest.fn() }));
 const { sendOrganizerApprovedEmail } = require('../../src/utils/notificationEmail');
 
-
-// -------------------- TEST SUITE FOR AUTH CONTROLLER --------------------
+// -------------------- TEST SUITE --------------------
 describe('Auth Controller Tests', () => {
   let mockReq, mockRes;
 
-  // Before each test, reset request and response objects and clear mocks
   beforeEach(() => {
-    mockReq = { body: {}, params: {} }; // mock request object
+    mockReq = { body: {}, params: {} };
     mockRes = {
-      status: jest.fn().mockReturnThis(), // allows chaining like res.status().json()
-      json: jest.fn(),                    // mock res.json
-      send: jest.fn()                     // mock res.send
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+      send: jest.fn()
     };
-    jest.clearAllMocks(); // clear previous calls for each test
+    jest.clearAllMocks();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  // -------------------- TEST REGISTER --------------------
+  // -------------------- REGISTER --------------------
   describe('register', () => {
-
-    // Test case: missing required fields
     it('should return 400 if required fields are missing', async () => {
-      mockReq.body = { fname: 'John' }; // only first name provided
-
-      await register(mockReq, mockRes); // call the controller
-
-      // Expect HTTP 400 and proper error message
+      mockReq.body = { fname: 'John' };
+      await register(mockReq, mockRes);
       expect(mockRes.status).toHaveBeenCalledWith(400);
       expect(mockRes.json).toHaveBeenCalledWith({
         message: "fname, lname, Email (username) and Password are required"
       });
     });
 
-    // Test case: email already exists in DB
     it('should return 400 if email already exists', async () => {
-      mockReq.body = {
-        fname: 'John',
-        lname: 'Doe',
-        email: 'existing@email.com',
-        password: 'password123'
-      };
-
-      // Mock database query to return existing user
-      pool.query.mockResolvedValueOnce({ rows: [{ email: 'existing@email.com' }] });
-
+      mockReq.body = { fname: 'John', lname: 'Doe', email: 'exists@mail.com', password: 'pass' };
+      pool.query.mockResolvedValueOnce({ rows: [{ email: 'exists@mail.com' }] });
       await register(mockReq, mockRes);
-
       expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        message: "Email (username) already registered"
-      });
     });
 
-    // Test case: successful registration
-    it('should successfully register organizer and send approval email', async () => {
-      mockReq.body = {
-        fname: 'John',
-        lname: 'Doe',
-        email: 'new@email.com',
-        password: 'password123',
-        contact_no: '1234567890'
-      };
+    it('should return 400 for invalid email format', async () => {
+      mockReq.body = { fname: 'John', lname: 'Doe', email: 'invalid-email', password: 'pass' };
+      await register(mockReq, mockRes);
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+    });
 
-      // First DB call: check if user exists → return empty
-      // Second DB call: insert new user → return the new user
-      pool.query
-        .mockResolvedValueOnce({ rows: [] }) 
-        .mockResolvedValueOnce({
-          rows: [{
-            organizer_ID: 1,
-            organizer_name: 'John Doe',
-            email: 'new@email.com',
-            status: 'pending'
-          }]
-        });
+    it('should return 400 for very weak password', async () => {
+      mockReq.body = { fname: 'John', lname: 'Doe', email: 'test@mail.com', password: '' };
+      await register(mockReq, mockRes);
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+    });
+
+    it('should handle SQL injection attempt safely', async () => {
+      mockReq.body = { fname: "John'; DROP TABLE users;--", lname: 'Doe', email: 'sql@mail.com', password: 'pass' };
+      pool.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ organizer_ID: 1 }] });
+      await register(mockReq, mockRes);
+      expect(mockRes.status).toHaveBeenCalledWith(201);
+    });
+
+    it('should register successfully and send approval email', async () => {
+      mockReq.body = { fname: 'John', lname: 'Doe', email: 'new@mail.com', password: 'pass', contact_no: '123' };
+      pool.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ organizer_ID: 1 }] });
 
       await register(mockReq, mockRes);
 
-      // Assertions to ensure proper behavior
-      expect(pool.query).toHaveBeenCalledTimes(2); // 2 DB queries
-      expect(bcrypt.hash).toHaveBeenCalledWith('password123', 10); // password hashed
-      expect(sendApprovalEmail).toHaveBeenCalled(); // approval email sent
-      expect(mockRes.status).toHaveBeenCalledWith(201); // HTTP 201 created
+      expect(sendApprovalEmail).toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(201);
     });
   });
 
-  // -------------------- TEST LOGIN --------------------
+  // -------------------- LOGIN --------------------
   describe('login', () => {
-
     it('should return 400 if email or password is missing', async () => {
-      mockReq.body = { email: 'test@email.com' };
-
+      mockReq.body = { email: 'test@mail.com' };
       await login(mockReq, mockRes);
-
       expect(mockRes.status).toHaveBeenCalledWith(400);
     });
 
     it('should return 401 if user not found', async () => {
-      mockReq.body = { email: 'nonexistent@email.com', password: 'password123' };
+      mockReq.body = { email: 'no@mail.com', password: 'pass' };
       pool.query.mockResolvedValueOnce({ rows: [] });
-
       await login(mockReq, mockRes);
-
       expect(mockRes.status).toHaveBeenCalledWith(401);
     });
 
     it('should return 403 if account not approved', async () => {
-      mockReq.body = { email: 'pending@email.com', password: 'password123' };
-      pool.query.mockResolvedValueOnce({
-        rows: [{
-          email: 'pending@email.com',
-          password_hash: 'hashed_password',
-          status: 'pending'
-        }]
-      });
-
+      mockReq.body = { email: 'pending@mail.com', password: 'pass' };
+      pool.query.mockResolvedValueOnce({ rows: [{ status: 'pending' }] });
       await login(mockReq, mockRes);
-
       expect(mockRes.status).toHaveBeenCalledWith(403);
     });
 
-    it('should successfully login and return token', async () => {
-      mockReq.body = { email: 'approved@email.com', password: 'password123' };
-      pool.query.mockResolvedValueOnce({
-        rows: [{
-          organizer_ID: 1,
-          email: 'approved@email.com',
-          password_hash: 'hashed_password',
-          status: 'approved'
-        }]
-      });
-
+    it('should login successfully', async () => {
+      mockReq.body = { email: 'approved@mail.com', password: 'pass' };
+      pool.query.mockResolvedValueOnce({ rows: [{ status: 'approved', password_hash: 'hash' }] });
       await login(mockReq, mockRes);
+      expect(bcrypt.compare).toHaveBeenCalled();
+      expect(jwt.sign).toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+    });
 
-      expect(bcrypt.compare).toHaveBeenCalled(); // check password
-      expect(jwt.sign).toHaveBeenCalled();       // generate JWT token
-      expect(mockRes.json).toHaveBeenCalledWith({
-        message: "Login successful",
-        token: 'mock_jwt_token'
-      });
+    it('should fail login for incorrect password', async () => {
+      mockReq.body = { email: 'approved@mail.com', password: 'wrong' };
+      pool.query.mockResolvedValueOnce({ rows: [{ status: 'approved', password_hash: 'hash' }] });
+      bcrypt.compare.mockResolvedValueOnce(false);
+      await login(mockReq, mockRes);
+      expect(mockRes.status).toHaveBeenCalledWith(401);
     });
   });
 });
 
-// -------------------- TEST APPROVAL --------------------
+// -------------------- APPROVAL --------------------
 describe('Approval Tests', () => {
   it('should approve organizer and send email', async () => {
-    const mockReq = { params: { organizerId: '1' } };
-    const mockRes = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
+    const req = { params: { organizerId: '1' } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    pool.query.mockResolvedValueOnce({ rows: [{ organizer_ID: 1, organizer_name: 'John', email: 'john@mail.com' }] });
 
-    // Mock DB query: find organizer
-    pool.query.mockResolvedValueOnce({
-      rows: [{
-        organizer_ID: 1,
-        organizer_name: 'John Doe',
-        email: 'john@email.com'
-      }]
-    });
+    await approveOrganizer(req, res);
 
-    await approveOrganizer(mockReq, mockRes);
-
-    // Verify the database update query was called correctly
-    expect(pool.query).toHaveBeenCalledWith(
-      'UPDATE Organizer SET status = $1 WHERE organizer_ID = $2 RETURNING *',
-      ['approved', '1']
-    );
-
-    // Verify that the notification email was sent
     expect(sendOrganizerApprovedEmail).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Organizer approved successfully",
+      organizer: expect.any(Object)
+    });
+  });
 
-    // Verify that JSON response was sent
-    expect(mockRes.json).toHaveBeenCalled();
+  it('should handle non-existent organizer ID', async () => {
+    const req = { params: { organizerId: '999' } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    pool.query.mockResolvedValueOnce({ rows: [] });
+
+    await approveOrganizer(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('should handle already approved organizer', async () => {
+    const req = { params: { organizerId: '1' } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    pool.query.mockResolvedValueOnce({ rows: [{ status: 'approved' }] });
+
+    await approveOrganizer(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 });

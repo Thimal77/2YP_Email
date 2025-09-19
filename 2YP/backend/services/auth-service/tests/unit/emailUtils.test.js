@@ -1,60 +1,114 @@
-// -------------------- IMPORT EMAIL UTILITIES --------------------
+// -------------------- SET ENV VARIABLES --------------------
+process.env.SMTP_EMAIL = 'test@example.com';
+process.env.ADMIN_EMAIL = 'admin@example.com';
+process.env.ADMIN_PASSWORD = 'testpass';
 
-// Import the functions that send emails
+// -------------------- MOCK NODEMAILER --------------------
+const mockSendMail = jest.fn().mockResolvedValue({ messageId: 'mock-message-id' });
+
+jest.mock('nodemailer', () => ({
+  // createTransport always returns our mock sendMail function
+  createTransport: () => ({ sendMail: mockSendMail })
+}));
+
+// -------------------- IMPORT EMAIL UTILS --------------------
 const { sendApprovalEmail } = require('../../src/utils/sendApproveEmail');
 const { sendOrganizerApprovedEmail } = require('../../src/utils/notificationEmail');
 
-// -------------------- MOCK EXTERNAL DEPENDENCIES --------------------
-
-// Mock nodemailer to avoid sending real emails during tests
-jest.mock('nodemailer');
-
-// -------------------- TEST SUITE FOR EMAIL UTILITIES --------------------
-describe('Email Utilities', () => {
-
-  // Clear all mocks before each test so no call history is shared
+// -------------------- TEST SUITE --------------------
+describe('Email Utilities Tests', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.clearAllMocks(); // Clear mock calls before each test
   });
 
-  // -------------------- TEST: ADMIN APPROVAL EMAIL --------------------
-  it('should send approval email to admin', async () => {
-    // Sample organizer data
-    const organizer = {
-      organizer_name: 'John Doe',
-      email: 'john@email.com'
-    };
+  // -------------------- sendApprovalEmail --------------------
+  describe('sendApprovalEmail', () => {
+    it('should send approval email to admin', async () => {
+      const organizer = { organizer_name: 'John Doe', email: 'john@mail.com' };
+      const approvalLink = 'http://localhost:3000/approve/1';
 
-    // Sample approval link that would be included in the email
-    const approvalLink = 'http://localhost/approve/1';
+      await sendApprovalEmail('admin@eventify.com', organizer, approvalLink);
 
-    // Call the function that should send the email
-    await sendApprovalEmail('admin@email.com', organizer, approvalLink);
+      // Assert sendMail was called with correct 'to' and HTML content
+      const sendMailCall = mockSendMail.mock.calls[0][0];
+      expect(sendMailCall.to).toBe('admin@eventify.com');
+      expect(sendMailCall.html).toContain('John Doe');
+      expect(sendMailCall.html).toContain(approvalLink);
+    });
 
-    // Require nodemailer after mocking it
-    const nodemailer = require('nodemailer');
+    it('should handle SMTP failure gracefully', async () => {
+      const organizer = { organizer_name: 'John Doe', email: 'john@mail.com' };
+      mockSendMail.mockRejectedValueOnce(new Error('SMTP failed'));
 
-    // Check that nodemailer.sendMail was called
-    // This ensures that our function attempted to send an email
-    expect(nodemailer.createTransport().sendMail).toHaveBeenCalled();
+      await expect(sendApprovalEmail('admin@eventify.com', organizer, 'link'))
+        .rejects.toThrow('SMTP failed');
+    });
+
+    it('should handle missing recipient email', async () => {
+      const organizer = { organizer_name: 'John Doe', email: '' };
+      await expect(sendApprovalEmail('', organizer, 'link'))
+        .rejects.toThrow(); // sendMail will reject due to missing 'to'
+    });
+
+    it('should handle special characters in organizer name', async () => {
+      const organizer = { organizer_name: "O'Reilly <Test>", email: 'oreilly@mail.com' };
+      await sendApprovalEmail('admin@eventify.com', organizer, 'link');
+
+      const sendMailCall = mockSendMail.mock.calls[0][0];
+      expect(sendMailCall.html).toContain("O'Reilly <Test>");
+    });
+
+    it('should handle very long organizer names and approval links', async () => {
+      const organizer = { organizer_name: 'A'.repeat(500), email: 'long@mail.com' };
+      const link = 'http://localhost:3000/approve/' + '1'.repeat(500);
+
+      await sendApprovalEmail('admin@eventify.com', organizer, link);
+      const sendMailCall = mockSendMail.mock.calls[0][0];
+      expect(sendMailCall.html).toContain('A'.repeat(500));
+      expect(sendMailCall.html).toContain('1'.repeat(500));
+    });
   });
 
-  // -------------------- TEST: NOTIFY ORGANIZER EMAIL --------------------
-  it('should send approval notification to organizer', async () => {
-    // Sample organizer data
-    const organizer = {
-      organizer_name: 'John Doe',
-      email: 'john@email.com'
-    };
+  // -------------------- sendOrganizerApprovedEmail --------------------
+  describe('sendOrganizerApprovedEmail', () => {
+    it('should send notification to organizer', async () => {
+      const organizer = { organizer_name: 'Jane Smith', email: 'jane@mail.com' };
+      await sendOrganizerApprovedEmail(organizer);
 
-    // Call the function that should notify the organizer
-    await sendOrganizerApprovedEmail(organizer);
+      const sendMailCall = mockSendMail.mock.calls[0][0];
+      expect(sendMailCall.to).toBe('jane@mail.com');
+      expect(sendMailCall.html).toContain('Jane Smith');
+      expect(sendMailCall.html).toContain('approved');
+    });
 
-    // Require nodemailer after mocking it
-    const nodemailer = require('nodemailer');
+    it('should handle email server failure', async () => {
+      const organizer = { organizer_name: 'Jane Smith', email: 'jane@mail.com' };
+      mockSendMail.mockRejectedValueOnce(new Error('Server down'));
 
-    // Check that nodemailer.sendMail was called
-    // Confirms that our notification function attempted to send an email
-    expect(nodemailer.createTransport().sendMail).toHaveBeenCalled();
+      await expect(sendOrganizerApprovedEmail(organizer))
+        .rejects.toThrow('Server down');
+    });
+
+    it('should handle special characters in organizer name', async () => {
+      const organizer = { organizer_name: "O'Reilly Events", email: 'oreilly@mail.com' };
+      await sendOrganizerApprovedEmail(organizer);
+
+      const sendMailCall = mockSendMail.mock.calls[0][0];
+      expect(sendMailCall.html).toContain("O'Reilly Events");
+    });
+
+    it('should handle empty email', async () => {
+      const organizer = { organizer_name: "Test", email: "" };
+      await expect(sendOrganizerApprovedEmail(organizer))
+        .rejects.toThrow();
+    });
+
+    it('should handle very long names', async () => {
+      const organizer = { organizer_name: 'B'.repeat(500), email: 'long@mail.com' };
+      await sendOrganizerApprovedEmail(organizer);
+
+      const sendMailCall = mockSendMail.mock.calls[0][0];
+      expect(sendMailCall.html).toContain('B'.repeat(500));
+    });
   });
 });
