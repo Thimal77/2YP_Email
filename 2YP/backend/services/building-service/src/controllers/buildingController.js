@@ -1,5 +1,5 @@
-// controllers/buildingController.js
-
+const express = require('express');
+const router = express.Router();
 const pool = require('../../../../db/db.js');
 
 // ==============================
@@ -74,7 +74,7 @@ const createBuilding = async (req, res) => {
         [building_id, zone_id, building_name, description || null, exhibits || null, exhibit_tags ? JSON.stringify(exhibit_tags) : null]
       );
 
-      // maintain Exhibit_Tag_Map if exhibit_tags provided
+      // Maintain Exhibit_Tag_Map if exhibit_tags provided
       if (exhibit_tags && typeof exhibit_tags === 'object') {
         const entries = Object.entries(exhibit_tags);
         for (const [exhibitName, tag] of entries) {
@@ -95,7 +95,6 @@ const createBuilding = async (req, res) => {
     } finally {
       client.release();
     }
-
   } catch (err) {
     if (err.code === '23505') {  // unique violation
       if (err.constraint === 'building_pkey') {
@@ -137,7 +136,7 @@ const updateBuilding = async (req, res) => {
         return res.status(404).json({ message: 'Building not found' });
       }
 
-      // refresh Exhibit_Tag_Map if exhibit_tags provided
+      // Refresh Exhibit_Tag_Map if exhibit_tags provided
       if (exhibit_tags && typeof exhibit_tags === 'object') {
         await client.query(`DELETE FROM Exhibit_Tag_Map WHERE building_ID = $1`, [id]);
         const entries = Object.entries(exhibit_tags);
@@ -192,17 +191,53 @@ const deleteBuilding = async (req, res) => {
     res.status(500).json({ message: 'Database error', error: err.message });
   }
 };
+
+// ==============================
+// GET BUILDINGS BY TAG
+// ==============================
+const getBuildingsByTag = async (req, res) => {
+  const { tag } = req.query;  // Get the tag from query parameters
+
+  if (!tag) {
+    return res.status(400).json({ message: 'Tag is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT building_ID, building_name, exhibits, zone_ID, exhibit_tags
+       FROM Building
+       WHERE EXISTS (
+         SELECT 1
+         FROM jsonb_each_text(exhibit_tags) AS tags
+         WHERE tags.value LIKE $1
+       )`,
+      [`%${tag}%`]  // Use LIKE for partial matching on the tag
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'No buildings found with the given tag' });
+    }
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching buildings by tag:', err);
+    res.status(500).json({ message: 'Database error', error: err.message });
+  }
+};
+
 // Tags list
 router.get('/tags', (req, res) => {
-	res.json({
-		tags: ['AI', 'Robotics', 'Mechanics', 'Civil', 'Electronics', 'Computer Science', 'Chemical', 'Manufacturing']
-	});
+  res.json({
+    tags: ['AI', 'Robotics', 'Mechanics', 'Civil', 'Electronics', 'Computer Science', 'Chemical', 'Manufacturing']
+  });
 });
 
+// Export functions
 module.exports = {
   getBuildings,
   getBuildingById,
   createBuilding,
   updateBuilding,
-  deleteBuilding
+  deleteBuilding,
+  getBuildingsByTag  // Add the new function to the export
 };
